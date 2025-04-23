@@ -19,11 +19,20 @@
           class="card-number"
           :class="{
             'winning-cell': isWinningCell(index),
-            'last-called': number === lastCalledNumber
+            'last-called': number === lastCalledNumber,
+            'revealed': isRevealed(number)
           }"
           :style="getNumberStyle(number)"
         >
-          {{ number }}
+          <span class="number-text">{{ number }}</span>
+          <div v-if="!isRevealed(number) || number === lastCalledNumber"
+               class="scratch-overlay"
+               :class="{'scratching': number === lastCalledNumber}">
+            <div class="scratch-texture"></div>
+          </div>
+          <div v-if="number === lastCalledNumber" class="scratch-particles">
+            <div v-for="p in 12" :key="`particle-${p}`" class="particle" :style="getParticleStyle(p)"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -57,7 +66,8 @@ export default {
   },
   data() {
     return {
-      winningCells: []
+      winningCells: [],
+      revealedNumbers: []
     }
   },
   computed: {
@@ -97,11 +107,36 @@ export default {
       // Make sure we don't have duplicate indices in winningCells
       return this.winningCells.indexOf(index) !== -1;
     },
+    isRevealed(number) {
+      // Check if the number has been called and it's not the current last called number
+      return this.calledNumbers.includes(number) && number !== this.lastCalledNumber;
+    },
     getNumberStyle(number) {
       if (this.calledNumbers.includes(number)) {
+        // Add this number to revealed numbers if not already there
+        if (!this.revealedNumbers.includes(number)) {
+          this.revealedNumbers.push(number);
+        }
         return { backgroundColor: this.cardColor, color: 'white' };
       }
       return {};
+    },
+    getParticleStyle(index) {
+      const size = Math.random() * 3 + 2; // 2-5px
+      const angle = (index / 12) * 360;
+      const distance = Math.random() * 25 + 15; // 15-40px
+      const duration = Math.random() * 0.6 + 0.4; // 0.4-1s
+      const delay = Math.random() * 0.3 + 0.1; // 0.1-0.4s
+      const color = Math.random() > 0.5 ? '#aaa' : '#999';
+      
+      return {
+        width: `${size}px`,
+        height: `${size}px`,
+        backgroundColor: color,
+        animation: `particle-fly ${duration}s ease-out ${delay}s forwards`,
+        '--angle': `${angle}deg`,
+        '--distance': `${distance}px`
+      };
     },
     getConfettiStyle(n) {
       const colors = ['#f44336', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5', '#2196f3', '#03a9f4', '#00bcd4', '#009688', '#4CAF50', '#8BC34A', '#CDDC39', '#FFEB3B', '#FFC107', '#FF9800', '#FF5722', 'gold', 'silver'];
@@ -223,6 +258,131 @@ export default {
   transition: all 0.2s ease;
   background-color: white;
   color: #333;
+  position: relative;
+  overflow: hidden;
+}
+
+.number-text {
+  position: relative;
+  z-index: 1;
+}
+
+.scratch-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #888 0%, #ccc 50%, #aaa 100%);
+  z-index: 2;
+  transition: transform 0.5s ease, opacity 0.5s ease;
+  border-radius: 5px;
+  box-shadow: inset 0 0 3px rgba(0,0,0,0.3);
+  overflow: hidden;
+}
+
+.scratch-texture {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image:
+    radial-gradient(circle at 10px 10px, rgba(255,255,255,0.2) 1px, transparent 1px),
+    radial-gradient(circle at 20px 20px, rgba(255,255,255,0.2) 1px, transparent 1px),
+    radial-gradient(circle at 30px 10px, rgba(255,255,255,0.2) 1px, transparent 1px),
+    radial-gradient(circle at 10px 30px, rgba(255,255,255,0.2) 1px, transparent 1px),
+    url('data:image/svg+xml;utf8,<svg width="40" height="40" xmlns="http://www.w3.org/2000/svg"><path d="M0 0 L40 40 M40 0 L0 40 M20 0 L20 40 M0 20 L40 20" stroke-width="1" stroke="rgba(0,0,0,0.1)"/></svg>');
+}
+
+.card-number.revealed .scratch-overlay {
+  transform: translateX(100%) rotate(5deg);
+  opacity: 0;
+  visibility: hidden; /* Completely hide the element after animation */
+}
+
+.scratch-overlay.scratching {
+  animation: scratch-off 0.8s 0.1s forwards;
+}
+
+.scratch-overlay.scratching .scratch-texture {
+  animation: texture-move 0.8s 0.1s forwards;
+}
+
+.scratch-overlay::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,0.3) 50%,
+    rgba(255,255,255,0) 100%
+  );
+  transform: skewX(-20deg);
+  animation: shine 1s infinite;
+  display: none;
+}
+
+.scratch-overlay.scratching::before {
+  display: block;
+}
+
+@keyframes shine {
+  0% { left: -100%; }
+  100% { left: 200%; }
+}
+
+@keyframes scratch-off {
+  0% {
+    transform: translateX(0) rotate(0deg);
+    opacity: 1;
+  }
+  20% {
+    transform: translateX(10%) rotate(2deg);
+    opacity: 0.9;
+  }
+  40% {
+    transform: translateX(30%) rotate(3deg);
+    opacity: 0.7;
+  }
+  60% {
+    transform: translateX(50%) rotate(5deg);
+    opacity: 0.5;
+  }
+  80% {
+    transform: translateX(70%) rotate(7deg);
+    opacity: 0.3;
+  }
+  100% {
+    transform: translateX(120%) rotate(10deg);
+    opacity: 0;
+    visibility: hidden; /* Ensure it's completely hidden */
+  }
+}
+
+@keyframes texture-move {
+  0% {
+    background-position: 0 0;
+  }
+  20% {
+    background-position: 2px 0;
+  }
+  40% {
+    background-position: 3px 1px;
+  }
+  60% {
+    background-position: 5px 2px;
+  }
+  80% {
+    background-position: 7px 3px;
+  }
+  100% {
+    background-position: 10px 5px;
+  }
 }
 
 .card-number.winning-cell {
@@ -348,5 +508,40 @@ export default {
   0% { transform: scale(1); }
   50% { transform: scale(1.1); }
   100% { transform: scale(1); }
+}
+
+.scratch-particles {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.particle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background-color: #ccc;
+  border-radius: 50%;
+  transform-origin: center;
+  box-shadow: 0 0 2px rgba(0,0,0,0.1);
+  opacity: 0.8;
+}
+
+@keyframes particle-fly {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--angle, 0deg)) translateX(var(--distance, 20px)) scale(0);
+  }
 }
 </style>

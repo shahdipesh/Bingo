@@ -6,7 +6,10 @@
     <div class="game-controls">
       <button @click="startGame">Start New Game</button>
       <button @click="callNumber" :disabled="gameOver || autoCallActive || bingoAchieved">Call Number</button>
-      <button @click="generateNewCards" :disabled="bingoAchieved">New Cards</button>
+      <button @click="generateNewCards" :disabled="bingoAchieved || generatingCards" :class="{'generating': generatingCards}">
+        <span v-if="generatingCards">Shuffling...</span>
+        <span v-else>Randomize</span>
+      </button>
       <button v-if="!autoCallActive" @click="startAutoCall" :disabled="gameOver || bingoAchieved">Auto Call</button>
       <button v-if="autoCallActive" @click="stopAutoCall" class="stop-btn">Stop Auto Call</button>
     </div>
@@ -19,6 +22,30 @@
     <div v-if="lastCalledNumber" class="last-called-number">
       Last Called: <span class="number">{{ lastCalledNumber }}</span>
       <div class="call-counter">{{ calledNumbers.length }} / 75 numbers called</div>
+    </div>
+    
+    <!-- Card generation message -->
+    <div v-if="showCardMessage" class="card-message">
+      <div class="card-message-content">
+        {{ cardMessageText }}
+        <div v-if="generatingCards" class="shuffle-animation">
+          <div class="shuffle-card"></div>
+          <div class="shuffle-card"></div>
+          <div class="shuffle-card"></div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Card generation message -->
+    <div v-if="showCardMessage" class="card-message">
+      <div class="card-message-content">
+        {{ cardMessageText }}
+        <div v-if="generatingCards" class="shuffle-animation">
+          <div class="shuffle-card"></div>
+          <div class="shuffle-card"></div>
+          <div class="shuffle-card"></div>
+        </div>
+      </div>
     </div>
     
     <div class="players">
@@ -94,6 +121,9 @@ export default {
       isSafari: false,
       safariAudioInitialized: false,
       audioInitAttempts: 0,
+      generatingCards: false,
+      showCardMessage: false,
+      cardMessageText: '',
       players: this.loadFromLocalStorage('bingoPlayers', [
         {
           name: "Player 1",
@@ -157,38 +187,101 @@ export default {
       }
     },
     generateNewCards() {
-      // Generate all cards at once to ensure no number repeats across cards
-      const allCards = this.generateAllBingoCards(this.players.length);
+      // Set generating state to true for visual feedback
+      this.generatingCards = true;
       
-      // Assign cards to players
-      this.players.forEach((player, index) => {
-        player.cardData = allCards[index];
-        console.log(`Player ${index + 1} card has ${player.cardData.length} numbers`);
-      });
+      // Show a message that cards are being shuffled
+      this.showCardMessage = true;
+      this.cardMessageText = 'Shuffling cards...';
       
-      // Save players to localStorage
-      this.saveToLocalStorage('bingoPlayers', this.players);
+      // Use setTimeout to create a visual delay and allow UI to update
+      setTimeout(() => {
+        // Generate all cards at once to ensure no number repeats across cards
+        const allCards = this.generateAllBingoCards(this.players.length);
+        
+        // Create a visual shuffling effect by updating cards with a delay
+        this.players.forEach((player, index) => {
+          // Stagger the updates for visual effect
+          setTimeout(() => {
+            player.cardData = allCards[index];
+            console.log(`Player ${index + 1} card has ${player.cardData.length} numbers`);
+            
+            // If this is the last player, finish the process
+            if (index === this.players.length - 1) {
+              // Update the message
+              this.cardMessageText = 'New cards ready!';
+              
+              // Save players to localStorage
+              this.saveToLocalStorage('bingoPlayers', this.players);
+              
+              // Reset generating state after a short delay
+              setTimeout(() => {
+                this.generatingCards = false;
+                
+                // Hide the message after a delay
+                setTimeout(() => {
+                  this.showCardMessage = false;
+                }, 1500);
+              }, 500);
+            }
+          }, index * 200); // Stagger each player's card update
+        });
+      }, 600); // Initial delay for visual feedback
     },
     generateAllBingoCards(numCards) {
-      // Create a pool of all available numbers
-      const availableNumbers = Array.from({ length: 75 }, (_, i) => i + 1);
-      this.shuffleArray(availableNumbers);
+      // Traditional bingo has 5 columns (B, I, N, G, O) with specific number ranges
+      const columnRanges = [
+        { min: 1, max: 15 },    // B column: 1-15
+        { min: 16, max: 30 },   // I column: 16-30
+        { min: 31, max: 45 },   // N column: 31-45
+        { min: 46, max: 60 },   // G column: 46-60
+        { min: 61, max: 75 }    // O column: 61-75
+      ];
       
       const cards = [];
       
+      // For each card
       for (let cardIndex = 0; cardIndex < numCards; cardIndex++) {
-        // Create an array to hold 15 numbers
+        // Create an array to hold 15 numbers (3 from each column)
         const card = [];
+        // Track numbers used in this card to prevent duplicates
+        const usedInCard = new Set();
         
-        // Select 15 numbers for this card
-        for (let i = 0; i < 15; i++) {
-          // If we have enough numbers left in the pool, use them
-          if (availableNumbers.length > 0) {
-            const num = availableNumbers.splice(0, 1)[0];
-            card.push(num);
-          } else {
-            // Fallback in case we run out of numbers
-            card.push(Math.floor(Math.random() * 75) + 1);
+        // For each column, select 3 unique numbers
+        for (let colIndex = 0; colIndex < 5; colIndex++) {
+          const range = columnRanges[colIndex];
+          
+          // Create an array of all available numbers in this column's range
+          const availableNumbers = [];
+          for (let num = range.min; num <= range.max; num++) {
+            if (!usedInCard.has(num)) {
+              availableNumbers.push(num);
+            }
+          }
+          
+          // Shuffle the available numbers
+          this.shuffleArray(availableNumbers);
+          
+          // Take 3 numbers for this column
+          for (let i = 0; i < 3; i++) {
+            if (availableNumbers.length > 0) {
+              const num = availableNumbers.pop();
+              card.push(num);
+              usedInCard.add(num);
+            } else {
+              // This should never happen since we have 15 numbers in each column
+              // and we're only taking 3, but just in case:
+              console.error("Ran out of numbers in column", colIndex);
+              
+              // Find any unused number in the entire range
+              for (let n = 1; n <= 75; n++) {
+                if (!usedInCard.has(n)) {
+                  card.push(n);
+                  usedInCard.add(n);
+                  break;
+                }
+              }
+            }
           }
         }
         
