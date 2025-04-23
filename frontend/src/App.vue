@@ -77,7 +77,7 @@ export default {
       autoCallActive: false,
       callSpeed: 3,
       autoCallInterval: null,
-      players: [
+      players: this.loadFromLocalStorage('bingoPlayers', [
         {
           name: "Player 1",
           cardColor: "#dc3545",
@@ -103,8 +103,8 @@ export default {
           cardColor: "#6f42c1",
           cardData: [20, 56, 49, 61, 33, 22, 48, 4, 7, 44, 9, 40, 12, 36, 54]
         }
-      ],
-      calledNumbers: [],
+      ]),
+      calledNumbers: this.loadFromLocalStorage('bingoCalledNumbers', []),
       allNumbers: Array.from({ length: 75 }, (_, i) => i + 1)
     }
   },
@@ -115,8 +115,8 @@ export default {
       this.gameOver = false;
       this.bingoAchieved = false;
       this.stopAutoCall();
-      // Clear localStorage to start fresh
-      localStorage.clear();
+      // Save empty calledNumbers to localStorage
+      this.saveToLocalStorage('bingoCalledNumbers', this.calledNumbers);
     },
     callNumber() {
       if (this.calledNumbers.length < 75) {
@@ -126,7 +126,8 @@ export default {
         } while (this.calledNumbers.includes(number));
         this.calledNumbers.push(number);
         this.lastCalledNumber = number;
-        // No need to save to localStorage for now
+        // Save called numbers to localStorage
+        this.saveToLocalStorage('bingoCalledNumbers', this.calledNumbers);
         
         // Announce the number using speech synthesis
         this.announceNumber(number);
@@ -148,7 +149,8 @@ export default {
         console.log(`Player ${index + 1} card has ${player.cardData.length} numbers`);
       });
       
-      // No need to save to localStorage for now
+      // Save players to localStorage
+      this.saveToLocalStorage('bingoPlayers', this.players);
     },
     generateAllBingoCards(numCards) {
       // Create a pool of all available numbers
@@ -348,13 +350,12 @@ export default {
     }
   },
   watch: {
-    // Temporarily disable watch to prevent localStorage issues
-    // players: {
-    //   handler(newPlayers) {
-    //     this.saveToLocalStorage('bingoPlayers', newPlayers);
-    //   },
-    //   deep: true
-    // }
+    players: {
+      handler(newPlayers) {
+        this.saveToLocalStorage('bingoPlayers', newPlayers);
+      },
+      deep: true
+    }
   }
 }
 </script>
