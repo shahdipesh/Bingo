@@ -8,7 +8,7 @@
       <button @click="callNumber" :disabled="gameOver || autoCallActive || bingoAchieved">Call Number</button>
       <button @click="generateNewCards" :disabled="bingoAchieved || generatingCards" :class="{'generating': generatingCards}">
         <span v-if="generatingCards">Shuffling...</span>
-        <span v-else>Randomize</span>
+        <span v-else>Mix numbers</span>
       </button>
       <button v-if="!autoCallActive" @click="startAutoCall" :disabled="gameOver || bingoAchieved">Auto Call</button>
       <button v-if="autoCallActive" @click="stopAutoCall" class="stop-btn">Stop Auto Call</button>
