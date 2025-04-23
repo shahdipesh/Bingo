@@ -58,6 +58,15 @@
     </div>
     <!-- Audio elements for sound effects -->
     <audio ref="bingoSound" src="https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3" preload="auto"></audio>
+    
+    <!-- Audio context initialization message for mobile -->
+    <div v-if="showAudioPrompt" class="audio-prompt">
+      <div class="audio-prompt-content">
+        <h3>Enable Audio</h3>
+        <p>Tap the button below to enable sound effects and number announcements.</p>
+        <button @click="initializeAudio" class="enable-audio-btn">Enable Audio</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -77,6 +86,9 @@ export default {
       autoCallActive: false,
       callSpeed: 3,
       autoCallInterval: null,
+      audioInitialized: false,
+      showAudioPrompt: true,
+      audioContext: null,
       players: this.loadFromLocalStorage('bingoPlayers', [
         {
           name: "Player 1",
@@ -218,45 +230,47 @@ export default {
         this.stopAutoCall();
       }
       
-      // Play bingo sound
-      this.$refs.bingoSound.currentTime = 0;
-      this.$refs.bingoSound.play().catch(e => console.log('Error playing bingo sound:', e));
-      
-      // Announce bingo using speech synthesis
-      if ('speechSynthesis' in window) {
-        // Cancel any ongoing speech
-        window.speechSynthesis.cancel();
+      // Play bingo sound if audio is initialized
+      if (this.audioInitialized) {
+        this.$refs.bingoSound.currentTime = 0;
+        this.$refs.bingoSound.play().catch(e => console.log('Error playing bingo sound:', e));
         
-        // Create a more natural, conversational announcement
-        const phrases = [
-          `Wow! ${playerName} just got Bingo! Congratulations!`,
-          `Amazing! ${playerName} has Bingo! Well played!`,
-          `Oh my goodness! ${playerName} scored Bingo! What a game!`,
-          `Fantastic! ${playerName} has won with Bingo! Great job!`
-        ];
-        
-        // Choose a random congratulatory phrase
-        const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
-        
-        // Add a good luck message with a slight pause
-        const goodLuckPhrases = [
-          "Keep playing everyone, you might be next!",
-          "Don't give up everyone else, your luck might change!",
-          "The game continues! Who will be our next winner?",
-          "Let's see who gets lucky next!"
-        ];
-        
-        const randomGoodLuck = goodLuckPhrases[Math.floor(Math.random() * goodLuckPhrases.length)];
-        
-        const utterance = new SpeechSynthesisUtterance(`${randomPhrase} ${randomGoodLuck}`);
-        
-        // Set properties for more natural speech
-        utterance.rate = 0.9; // Slightly slower for more natural sound
-        utterance.pitch = 1.0; // Normal pitch
-        utterance.volume = 1.0; // Full volume
-        
-        // Speak the announcement
-        window.speechSynthesis.speak(utterance);
+        // Announce bingo using speech synthesis
+        if ('speechSynthesis' in window) {
+          // Cancel any ongoing speech
+          window.speechSynthesis.cancel();
+          
+          // Create a more natural, conversational announcement
+          const phrases = [
+            `Wow! ${playerName} just got Bingo! Congratulations!`,
+            `Amazing! ${playerName} has Bingo! Well played!`,
+            `Oh my goodness! ${playerName} scored Bingo! What a game!`,
+            `Fantastic! ${playerName} has won with Bingo! Great job!`
+          ];
+          
+          // Choose a random congratulatory phrase
+          const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
+          
+          // Add a good luck message with a slight pause
+          const goodLuckPhrases = [
+            "Keep playing everyone, you might be next!",
+            "Don't give up everyone else, your luck might change!",
+            "The game continues! Who will be our next winner?",
+            "Let's see who gets lucky next!"
+          ];
+          
+          const randomGoodLuck = goodLuckPhrases[Math.floor(Math.random() * goodLuckPhrases.length)];
+          
+          const utterance = new SpeechSynthesisUtterance(`${randomPhrase} ${randomGoodLuck}`);
+          
+          // Set properties for more natural speech
+          utterance.rate = 0.9; // Slightly slower for more natural sound
+          utterance.pitch = 1.0; // Normal pitch
+          utterance.volume = 1.0; // Full volume
+          
+          // Speak the announcement
+          window.speechSynthesis.speak(utterance);
+        }
       }
       
       // Show message with player name
@@ -305,8 +319,8 @@ export default {
       }, 5000);
     },
     announceNumber(number) {
-      // Use speech synthesis to announce the number
-      if ('speechSynthesis' in window) {
+      // Use speech synthesis to announce the number if audio is initialized
+      if (this.audioInitialized && 'speechSynthesis' in window) {
         // Cancel any ongoing speech
         window.speechSynthesis.cancel();
         
@@ -347,6 +361,58 @@ export default {
         console.error('Error loading from localStorage:', e);
         return defaultValue;
       }
+    },
+    initializeAudio() {
+      // Create and start AudioContext (needed for iOS)
+      if (!this.audioContext) {
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      
+      // Resume AudioContext if it's suspended (happens on iOS)
+      if (this.audioContext.state === 'suspended') {
+        this.audioContext.resume();
+      }
+      
+      // Play and immediately pause the audio element to initialize it
+      const playPromise = this.$refs.bingoSound.play();
+      
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            // Audio playback started successfully
+            this.$refs.bingoSound.pause();
+            this.$refs.bingoSound.currentTime = 0;
+            this.audioInitialized = true;
+            this.showAudioPrompt = false;
+            
+            // Test speech synthesis
+            if ('speechSynthesis' in window) {
+              const testUtterance = new SpeechSynthesisUtterance('Audio initialized');
+              testUtterance.volume = 0.1; // Very quiet test
+              window.speechSynthesis.speak(testUtterance);
+            }
+          })
+          .catch(error => {
+            console.log('Audio initialization failed:', error);
+            // Still mark as initialized to prevent further prompts
+            this.audioInitialized = true;
+            this.showAudioPrompt = false;
+          });
+      }
+    },
+    checkAudioSupport() {
+      // Check if we're on a mobile device
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      
+      if (isMobile) {
+        // On mobile, we need user interaction
+        this.showAudioPrompt = true;
+        this.audioInitialized = false;
+      } else {
+        // On desktop, we can try to initialize automatically
+        this.showAudioPrompt = false;
+        this.audioInitialized = true;
+      }
     }
   },
   watch: {
@@ -356,6 +422,9 @@ export default {
       },
       deep: true
     }
+  },
+  mounted() {
+    this.checkAudioSupport();
   }
 }
 </script>
@@ -691,5 +760,64 @@ button:disabled:hover {
 .win-modal button:hover {
   transform: translateY(-3px);
   box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+}
+
+/* Audio prompt styles */
+.audio-prompt {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.audio-prompt-content {
+  background: linear-gradient(135deg, #512b58 0%, #7b337d 100%);
+  border: 2px solid gold;
+  border-radius: 15px;
+  padding: 30px;
+  text-align: center;
+  max-width: 90%;
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+}
+
+.audio-prompt-content h3 {
+  color: gold;
+  margin-top: 0;
+  font-size: 24px;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}
+
+.audio-prompt-content p {
+  color: white;
+  margin-bottom: 20px;
+  font-size: 16px;
+}
+
+.enable-audio-btn {
+  background: linear-gradient(to right, #ff8a00, #da1b60);
+  color: white;
+  border: none;
+  border-radius: 25px;
+  padding: 12px 30px;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.enable-audio-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.enable-audio-btn:active {
+  transform: scale(0.98);
 }
 </style>
