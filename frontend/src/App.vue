@@ -58,6 +58,8 @@
     </div>
     <!-- Audio elements for sound effects -->
     <audio ref="bingoSound" src="https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3" preload="auto"></audio>
+    <!-- Fallback silent audio for Safari initialization -->
+    <audio ref="silentSound" src="data:audio/mpeg;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gTGFTb25vdGhlcXVlLm9yZwBURU5DAAAAHQAAA1N3aXRjaCBQbHVzIMKpIE5DSCBTb2Z0d2FyZQBUSVQyAAAABgAAAzIyMzUAVFNTRQAAAA8AAANMYXZmNTcuODMuMTAwAAAAAAAAAAAAAAD/80DEAAAAA0gAAAAATEFNRTMuMTAwVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/zQsRbAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/zQMSkAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV" preload="auto"></audio>
     
     <!-- Audio context initialization message for mobile -->
     <div v-if="showAudioPrompt" class="audio-prompt">
@@ -89,6 +91,9 @@ export default {
       audioInitialized: false,
       showAudioPrompt: true,
       audioContext: null,
+      isSafari: false,
+      safariAudioInitialized: false,
+      audioInitAttempts: 0,
       players: this.loadFromLocalStorage('bingoPlayers', [
         {
           name: "Player 1",
@@ -232,8 +237,25 @@ export default {
       
       // Play bingo sound if audio is initialized
       if (this.audioInitialized) {
-        this.$refs.bingoSound.currentTime = 0;
-        this.$refs.bingoSound.play().catch(e => console.log('Error playing bingo sound:', e));
+        try {
+          const bingoSound = this.$refs.bingoSound;
+          bingoSound.currentTime = 0;
+          
+          // For Safari, we need to resume the AudioContext again
+          if (this.isSafari && this.audioContext) {
+            this.audioContext.resume()
+              .then(() => {
+                bingoSound.play()
+                  .catch(e => console.error('Error playing bingo sound:', e));
+              })
+              .catch(e => console.error('Error resuming AudioContext:', e));
+          } else {
+            bingoSound.play()
+              .catch(e => console.error('Error playing bingo sound:', e));
+          }
+        } catch (e) {
+          console.error('Error preparing bingo sound:', e);
+        }
         
         // Announce bingo using speech synthesis
         if ('speechSynthesis' in window) {
@@ -321,29 +343,39 @@ export default {
     announceNumber(number) {
       // Use speech synthesis to announce the number if audio is initialized
       if (this.audioInitialized && 'speechSynthesis' in window) {
-        // Cancel any ongoing speech
-        window.speechSynthesis.cancel();
-        
-        // Create a more natural number announcement
-        const phrases = [
-          `Number ${number}`,
-          `${number}`,
-          `The number is ${number}`,
-          `We have ${number}`
-        ];
-        
-        // Choose a random phrase for variety
-        const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
-        
-        const utterance = new SpeechSynthesisUtterance(randomPhrase);
-        
-        // Set properties for more natural speech
-        utterance.rate = 0.9; // Slightly slower for more natural sound
-        utterance.pitch = 1.0; // Normal pitch
-        utterance.volume = 1.0; // Volume
-        
-        // Speak the number
-        window.speechSynthesis.speak(utterance);
+        try {
+          // For Safari, we need to resume the AudioContext first
+          if (this.isSafari && this.audioContext) {
+            this.audioContext.resume().catch(e => console.error('Error resuming AudioContext:', e));
+          }
+          
+          // Cancel any ongoing speech
+          window.speechSynthesis.cancel();
+          
+          // Create a more natural number announcement
+          const phrases = [
+            `Number ${number}`,
+            `${number}`,
+            `The number is ${number}`,
+            `We have ${number}`
+          ];
+          
+          // Choose a random phrase for variety
+          const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
+          
+          const utterance = new SpeechSynthesisUtterance(randomPhrase);
+          
+          // Set properties for more natural speech
+          utterance.rate = 0.9; // Slightly slower for more natural sound
+          utterance.pitch = 1.0; // Normal pitch
+          utterance.volume = 1.0; // Volume
+          
+          // Speak the number
+          window.speechSynthesis.speak(utterance);
+          console.log(`Announced number: ${number}`);
+        } catch (e) {
+          console.error('Error announcing number:', e);
+        }
       }
     },
     saveToLocalStorage(key, data) {
@@ -363,55 +395,199 @@ export default {
       }
     },
     initializeAudio() {
+      console.log("Initializing audio...");
+      
+      // Special handling for Safari
+      if (this.isSafari) {
+        return this.initializeSafariAudio();
+      }
+      
       // Create and start AudioContext (needed for iOS)
       if (!this.audioContext) {
-        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        try {
+          this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          console.log("AudioContext created:", this.audioContext.state);
+        } catch (e) {
+          console.error("Failed to create AudioContext:", e);
+        }
       }
       
-      // Resume AudioContext if it's suspended (happens on iOS)
-      if (this.audioContext.state === 'suspended') {
-        this.audioContext.resume();
+      // Resume AudioContext if it's suspended
+      if (this.audioContext && this.audioContext.state === 'suspended') {
+        this.audioContext.resume()
+          .then(() => console.log("AudioContext resumed successfully"))
+          .catch(e => console.error("Failed to resume AudioContext:", e));
       }
       
-      // Play and immediately pause the audio element to initialize it
-      const playPromise = this.$refs.bingoSound.play();
+      // First try to play the silent sound to unlock audio
+      const silentSound = this.$refs.silentSound;
+      silentSound.volume = 0.1;
+      
+      const silentPromise = silentSound.play();
+      if (silentPromise !== undefined) {
+        silentPromise
+          .then(() => {
+            console.log("Silent sound played successfully");
+            // Now try to play the actual sound
+            this.playActualSound();
+          })
+          .catch(error => {
+            console.error("Silent sound failed to play:", error);
+            // Try direct approach
+            this.playActualSound();
+          });
+      } else {
+        // Fallback for browsers that don't return a promise
+        this.playActualSound();
+      }
+    },
+    
+    playActualSound() {
+      console.log("Attempting to play actual sound...");
+      // Set volume low for test
+      const bingoSound = this.$refs.bingoSound;
+      bingoSound.volume = 0.2;
+      
+      const playPromise = bingoSound.play();
       
       if (playPromise !== undefined) {
         playPromise
           .then(() => {
-            // Audio playback started successfully
-            this.$refs.bingoSound.pause();
-            this.$refs.bingoSound.currentTime = 0;
+            console.log("Bingo sound played successfully");
+            // Pause it after a short delay to ensure it's properly initialized
+            setTimeout(() => {
+              bingoSound.pause();
+              bingoSound.currentTime = 0;
+              bingoSound.volume = 1.0; // Reset volume to normal
+              this.audioInitialized = true;
+              this.showAudioPrompt = false;
+              
+              // Test speech synthesis
+              if ('speechSynthesis' in window) {
+                try {
+                  const testUtterance = new SpeechSynthesisUtterance('Audio initialized');
+                  testUtterance.volume = 0.1; // Very quiet test
+                  window.speechSynthesis.speak(testUtterance);
+                  console.log("Speech synthesis test successful");
+                } catch (e) {
+                  console.error("Speech synthesis test failed:", e);
+                }
+              }
+            }, 100);
+          })
+          .catch(error => {
+            console.error("Bingo sound failed to play:", error);
+            this.audioInitAttempts++;
+            
+            if (this.audioInitAttempts < 3) {
+              console.log(`Retrying audio initialization (attempt ${this.audioInitAttempts})...`);
+              // Try again with user interaction
+              this.showAudioPrompt = true;
+            } else {
+              console.log("Max audio initialization attempts reached, proceeding without audio");
+              // Still mark as initialized to prevent further prompts
+              this.audioInitialized = true;
+              this.showAudioPrompt = false;
+            }
+          });
+      } else {
+        // For browsers that don't return a promise
+        console.log("Browser didn't return a play promise, assuming success");
+        this.audioInitialized = true;
+        this.showAudioPrompt = false;
+      }
+    },
+    
+    initializeSafariAudio() {
+      console.log("Using Safari-specific audio initialization");
+      
+      // Create audio context within the user gesture
+      if (!this.audioContext) {
+        try {
+          this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          console.log("Safari AudioContext created:", this.audioContext.state);
+        } catch (e) {
+          console.error("Failed to create Safari AudioContext:", e);
+        }
+      }
+      
+      // Resume the audio context (critical for Safari)
+      if (this.audioContext) {
+        this.audioContext.resume()
+          .then(() => console.log("Safari AudioContext resumed"))
+          .catch(e => console.error("Failed to resume Safari AudioContext:", e));
+      }
+      
+      // Play both sounds in sequence with a small delay
+      const silentSound = this.$refs.silentSound;
+      const bingoSound = this.$refs.bingoSound;
+      
+      // Set volume low for initialization
+      silentSound.volume = 0.1;
+      bingoSound.volume = 0.1;
+      
+      // First play the silent sound
+      silentSound.play()
+        .then(() => {
+          console.log("Safari silent sound played");
+          
+          // Then play and quickly pause the actual sound
+          return bingoSound.play();
+        })
+        .then(() => {
+          console.log("Safari bingo sound played");
+          
+          // Pause after a short delay
+          setTimeout(() => {
+            bingoSound.pause();
+            bingoSound.currentTime = 0;
+            bingoSound.volume = 1.0; // Reset volume
+            
+            this.safariAudioInitialized = true;
             this.audioInitialized = true;
             this.showAudioPrompt = false;
             
+            console.log("Safari audio initialization complete");
+            
             // Test speech synthesis
             if ('speechSynthesis' in window) {
-              const testUtterance = new SpeechSynthesisUtterance('Audio initialized');
-              testUtterance.volume = 0.1; // Very quiet test
-              window.speechSynthesis.speak(testUtterance);
+              try {
+                const testUtterance = new SpeechSynthesisUtterance('Audio initialized');
+                testUtterance.volume = 0.1;
+                window.speechSynthesis.speak(testUtterance);
+              } catch (e) {
+                console.error("Safari speech synthesis test failed:", e);
+              }
             }
-          })
-          .catch(error => {
-            console.log('Audio initialization failed:', error);
-            // Still mark as initialized to prevent further prompts
-            this.audioInitialized = true;
-            this.showAudioPrompt = false;
-          });
-      }
+          }, 100);
+        })
+        .catch(error => {
+          console.error("Safari audio initialization failed:", error);
+          
+          // Still mark as initialized to prevent further prompts
+          this.audioInitialized = true;
+          this.showAudioPrompt = false;
+        });
     },
     checkAudioSupport() {
+      // Check if we're on Safari (including iOS Safari)
+      const ua = navigator.userAgent.toLowerCase();
+      this.isSafari = (ua.indexOf('safari') !== -1 && ua.indexOf('chrome') === -1) ||
+                      /iPad|iPhone|iPod/.test(navigator.userAgent);
+      
+      console.log("Browser detection - isSafari:", this.isSafari);
+      
       // Check if we're on a mobile device
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      console.log("Browser detection - isMobile:", isMobile);
       
-      if (isMobile) {
-        // On mobile, we need user interaction
+      if (isMobile || this.isSafari) {
+        // On mobile or Safari, we need user interaction
         this.showAudioPrompt = true;
         this.audioInitialized = false;
       } else {
-        // On desktop, we can try to initialize automatically
-        this.showAudioPrompt = false;
-        this.audioInitialized = true;
+        // On desktop non-Safari, we can try to initialize automatically
+        this.initializeAudio();
       }
     }
   },
