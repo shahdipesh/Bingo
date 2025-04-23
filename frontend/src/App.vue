@@ -239,6 +239,8 @@ export default {
       ];
       
       const cards = [];
+      // Initialize a Set to track all used numbers across all cards
+      const allUsedNumbers = new Set();
       
       // For each card
       for (let cardIndex = 0; cardIndex < numCards; cardIndex++) {
@@ -254,7 +256,7 @@ export default {
           // Create an array of all available numbers in this column's range
           const availableNumbers = [];
           for (let num = range.min; num <= range.max; num++) {
-            if (!usedInCard.has(num)) {
+            if (!usedInCard.has(num) && !allUsedNumbers.has(num)) {
               availableNumbers.push(num);
             }
           }
@@ -268,6 +270,7 @@ export default {
               const num = availableNumbers.pop();
               card.push(num);
               usedInCard.add(num);
+              allUsedNumbers.add(num); // Add to the set of all used numbers
             } else {
               // This should never happen since we have 15 numbers in each column
               // and we're only taking 3, but just in case:
@@ -275,9 +278,10 @@ export default {
               
               // Find any unused number in the entire range
               for (let n = 1; n <= 75; n++) {
-                if (!usedInCard.has(n)) {
+                if (!usedInCard.has(n) && !allUsedNumbers.has(n)) {
                   card.push(n);
                   usedInCard.add(n);
+                  allUsedNumbers.add(n);
                   break;
                 }
               }
