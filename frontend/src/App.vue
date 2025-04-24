@@ -2,7 +2,7 @@
   <div id="app" class="casino-theme">
     <div class="casino-lights top"></div>
     <div class="casino-lights bottom"></div>
-    <h1 class="neon-text">The Great Bingo North </h1>
+    <h1 class="neon-text">Dab for Dollars</h1>
     <div class="game-controls">
       <button @click="startGame">Start New Game</button>
       <button @click="callNumber" :disabled="gameOver || autoCallActive || bingoAchieved">Call Number</button>
