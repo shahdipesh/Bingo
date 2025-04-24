@@ -374,8 +374,6 @@ export default {
           const goodLuckPhrases = [
             "Keep playing everyone, you might be next!",
             "Don't give up everyone else, your luck might change!",
-            "The game continues! Who will be our next winner?",
-            "Let's see who gets lucky next!"
           ];
           
           const randomGoodLuck = goodLuckPhrases[Math.floor(Math.random() * goodLuckPhrases.length)];
